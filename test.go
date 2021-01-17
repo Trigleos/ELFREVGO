@@ -11,11 +11,13 @@ type ELF struct {
 	section_table int
 	number_of_sections int
 	size_of_section_headers int
+	section_headers string
+	dynamic_strings string
 }
 
 
 func read_file(filename string) (data []byte) {
-	data,err := ioutil.ReadFile("normal")
+	data,err := ioutil.ReadFile(filename)
 	if err != nil {
 		fmt.Println("File reading error", err)
 		return
@@ -52,7 +54,7 @@ func change_endianness(data []byte) []byte {
 	return data
 }
 
-func read_sh_table(data []byte, curr_elf ELF) string {
+func read_sh_table(data []byte, curr_elf ELF) ELF {
 
 	slice := data[62:64]
 	sh_table_header_addr := int(binary.LittleEndian.Uint16(slice)) * curr_elf.size_of_section_headers + curr_elf.section_table
@@ -83,13 +85,14 @@ func read_sh_table(data []byte, curr_elf ELF) string {
 		}
 	}
 	
-	return string(data_copy)
+	curr_elf.section_headers = string(data_copy)
+	return curr_elf
 
 }
 
-func get_section_by_name(data []byte, curr_elf ELF, section_headers string, searched_section string) [2]int{
-	searched_index := strings.Index(section_headers,searched_section)
-	var result [2]int
+func get_section_by_name(data []byte, curr_elf ELF, searched_section string) [3]int{
+	searched_index := strings.Index(curr_elf.section_headers,searched_section)
+	var result [3]int
 	
 	for index:=0;index<curr_elf.number_of_sections;index++ {
 		section_header := data[curr_elf.section_table +
@@ -101,6 +104,7 @@ func get_section_by_name(data []byte, curr_elf ELF, section_headers string, sear
 		if string_offset == searched_index {
 			result[0] = int(binary.LittleEndian.Uint64(section_header[24:32]))
 			result[1] = int(binary.LittleEndian.Uint64(section_header[32:40]))
+			result[2] = int(binary.LittleEndian.Uint64(section_header[56:64]))
 		}
 	}
 	
@@ -122,11 +126,52 @@ func initialize_ELF(data []byte) ELF {
 	return curr_elf
 }
 
+func read_dyn_str(data []byte, curr_elf ELF) ELF{
+	dynstr := get_section_by_name(data,curr_elf, ".dynstr")
+	start_offset := dynstr[0]
+	length := dynstr[1]
+	
+	data_copy := data[start_offset:start_offset+length]
+	
+	for index:=0; index < len(data_copy);index++ {
+		if data_copy[index] == 0 {
+			data_copy[index] = byte(' ')
+		}
+	}
+	
+	curr_elf.dynamic_strings = string(data_copy)
+	return curr_elf
+}
+
+func get_dyn_function_id_by_name(data []byte, curr_elf ELF, searched_string string) int{
+	searched_index := strings.Index(curr_elf.dynamic_strings,searched_string)
+
+
+	dynsym := get_section_by_name(data, curr_elf, ".dynsym")
+	dynsym_section := data[dynsym[0]:dynsym[0]+dynsym[1]]
+	
+	for index := 0; index<dynsym[1]/dynsym[2]; index++{
+		str_index := int(binary.LittleEndian.Uint32(dynsym_section[index*dynsym[2]:index*dynsym[2]+4]))
+		if str_index == searched_index {
+			return index
+		}
+		
+	}
+	return 0
+}
+
 func main() {
 	
-	data := read_file("normal")
+	data := read_file("nopie")
 	curr_elf := initialize_ELF(data)
-	section_headers := read_sh_table(data,curr_elf)
-	fmt.Println(section_headers)
-	fmt.Println(get_section_by_name(data,curr_elf, section_headers, ".data"))	
+	curr_elf = read_sh_table(data,curr_elf)
+	fmt.Println(curr_elf.section_headers)
+	
+	curr_elf = read_dyn_str(data, curr_elf)
+	fmt.Println(curr_elf.dynamic_strings)
+	
+	fmt.Println(get_section_by_name(data,curr_elf, ".dynsym"))
+	
+	index := get_dyn_function_id_by_name(data, curr_elf, "printf")
+	fmt.Println(index)
 }
