@@ -90,9 +90,9 @@ func read_sh_table(data []byte, curr_elf ELF) ELF {
 
 }
 
-func get_section_by_name(data []byte, curr_elf ELF, searched_section string) [3]int{
+func get_section_by_name(data []byte, curr_elf ELF, searched_section string) [4]int{
 	searched_index := strings.Index(curr_elf.section_headers,searched_section)
-	var result [3]int
+	var result [4]int
 	
 	for index:=0;index<curr_elf.number_of_sections;index++ {
 		section_header := data[curr_elf.section_table +
@@ -105,6 +105,7 @@ func get_section_by_name(data []byte, curr_elf ELF, searched_section string) [3]
 			result[0] = int(binary.LittleEndian.Uint64(section_header[24:32]))
 			result[1] = int(binary.LittleEndian.Uint64(section_header[32:40]))
 			result[2] = int(binary.LittleEndian.Uint64(section_header[56:64]))
+			result[3] = int(binary.LittleEndian.Uint64(section_header[16:24]))
 		}
 	}
 	
@@ -122,6 +123,10 @@ func initialize_ELF(data []byte) ELF {
 	
 	slice = data[60:62]
 	curr_elf.number_of_sections = int(binary.LittleEndian.Uint16(slice))
+	
+	curr_elf = read_sh_table(data,curr_elf)
+	
+	curr_elf = read_dyn_str(data, curr_elf)
 	
 	return curr_elf
 }
@@ -145,8 +150,7 @@ func read_dyn_str(data []byte, curr_elf ELF) ELF{
 
 func get_dyn_function_id_by_name(data []byte, curr_elf ELF, searched_string string) int{
 	searched_index := strings.Index(curr_elf.dynamic_strings,searched_string)
-
-
+	
 	dynsym := get_section_by_name(data, curr_elf, ".dynsym")
 	dynsym_section := data[dynsym[0]:dynsym[0]+dynsym[1]]
 	
@@ -160,18 +164,43 @@ func get_dyn_function_id_by_name(data []byte, curr_elf ELF, searched_string stri
 	return 0
 }
 
+func get_dyn_addr_by_name(data []byte, curr_elf ELF, searched_function string) int{
+	id := get_dyn_function_id_by_name(data,curr_elf,searched_function)
+	rela_plt := get_section_by_name(data,curr_elf,".rela.plt")
+	rela_plt_section := data[rela_plt[0]:rela_plt[0]+rela_plt[1]]
+	for index:=0;index < rela_plt[1]/rela_plt[2];index++ {
+		plt_entry := rela_plt_section[index*rela_plt[2]:(index+1)*rela_plt[2]]
+		info := int(binary.LittleEndian.Uint64(plt_entry[8:16])) >> 32
+		if info == id {
+			return int(binary.LittleEndian.Uint64(plt_entry[0:8]))
+		}
+	}
+
+	return 0
+}
+
+func vir_got_addr_to_phys_addr(data []byte, curr_elf ELF, vir_addr int) int{
+	got_plt := get_section_by_name(data, curr_elf, ".got.plt")
+	offset := vir_addr - got_plt[3]
+	phys_addr := got_plt[0] + offset
+	return phys_addr
+}
+
+func check_for_pie(data []byte) bool{
+	if data[16] == 2 {
+		return true
+	} else {
+		return false
+	}
+}
+
 func main() {
 	
 	data := read_file("nopie")
 	curr_elf := initialize_ELF(data)
-	curr_elf = read_sh_table(data,curr_elf)
-	fmt.Println(curr_elf.section_headers)
-	
-	curr_elf = read_dyn_str(data, curr_elf)
-	fmt.Println(curr_elf.dynamic_strings)
-	
-	fmt.Println(get_section_by_name(data,curr_elf, ".dynsym"))
-	
-	index := get_dyn_function_id_by_name(data, curr_elf, "printf")
-	fmt.Println(index)
+
+	addr := get_dyn_addr_by_name(data, curr_elf, "system")
+	fmt.Printf("%x\n",addr)
+	addr = vir_got_addr_to_phys_addr(data, curr_elf, addr)
+	fmt.Printf("%x\n",addr)
 }
