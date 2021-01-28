@@ -66,11 +66,15 @@ func write_data(hex_string string, data []byte, addr int, size int) []byte {  //
 	hex_data := strings.Replace(hex_string, "0x", "", -1)
 	hex_data = strings.Replace(hex_data, "0X", "", -1) 
 	
+
+	if len(hex_data) % 2 != 0 {
+		hex_data = "0" + hex_data
+	}
 	length := len(hex_data)/2
-	for index := 0; index < length ; index++ {
+	for index := length-1; index >= 0 ; index-- {
 		current_int,err := strconv.ParseInt(hex_data[index*2:index*2+2],16,size*8)
 		if err == nil {
-			data[addr+(size-1-index)] = byte(current_int)
+			data[addr+(length-1-index)] = byte(current_int)
 		}
 	}
 	return data
@@ -278,6 +282,23 @@ func get_dyn_addr_by_name(data []byte, curr_elf ELF, searched_function string) i
 	return 0
 }
 
+func get_fun_addr_by_name(data []byte, curr_elf ELF, searched_function string) int{
+	offset := strings.Index(curr_elf.string_table, searched_function)
+	symtab := get_section_by_name(data, curr_elf, ".symtab")
+	fmt.Println(symtab)
+	symtab_section := data[symtab[0]:symtab[0]+symtab[1]]
+	for index:=0;index < symtab[1]/symtab[2];index++ {
+		symtab_entry := symtab_section[index*symtab[2]:(index+1)*symtab[2]]
+		name := int(binary.LittleEndian.Uint32(symtab_entry[0:4]))
+		if name == offset {
+			return int(binary.LittleEndian.Uint64(symtab_entry[8:16]))
+		}
+	
+	}
+	return 0
+
+}
+
 func vir_addr_to_phys_addr(data []byte, curr_elf ELF, vir_addr int, section_name string) int{  //translates virtual address to physical address based on section in which this address is
 	section_info := get_section_by_name(data, curr_elf,section_name)  //get section information
 	offset := vir_addr - section_info[3]  //subtracts the start address of the virtual section from the virtual address to get the offset into the section
@@ -301,10 +322,16 @@ func check_for_64bit(data []byte) bool{  //parses ELF header to determine wether
 	}
 }
 
-func overwrite_got_entry(data []byte, function_name string, new_function_address string, curr_elf ELF) ([]byte) {
+func overwrite_got_entry(data []byte, function_name string, new_function_address string, curr_elf ELF, is_hex bool) ([]byte) {
 	addr := get_dyn_addr_by_name(data, curr_elf, function_name)
 	addr = vir_addr_to_phys_addr(data, curr_elf, addr, ".got.plt")
-	data = write_data(new_function_address,data,addr,4)
+	if is_hex {
+		data = write_data(new_function_address,data,addr,4)
+	} else {
+		new_function_address = fmt.Sprintf("%x",get_fun_addr_by_name(data, curr_elf,new_function_address))
+		fmt.Println(new_function_address)
+		data = write_data(new_function_address,data,addr,4)
+	}
 	return data
 }
 
@@ -316,8 +343,8 @@ func overwrite_section_header_types(data []byte, curr_elf ELF) ([]byte) {
 	return data
 }
 
-func check_stripped(data []byte, curr_elf ELF) {
-	if (get_Section_by_name(data,curr_elf,".symtab")[0] == 0 {
+func check_stripped(data []byte, curr_elf ELF) (bool) {
+	if get_section_by_name(data,curr_elf,".symtab")[0] == 0 {
 		return true
 	} else {
 		return false
@@ -326,10 +353,10 @@ func check_stripped(data []byte, curr_elf ELF) {
 
 func main() {
 	
-	data := read_file("nopie_stripped")
+	data := read_file("nopie")
 	curr_elf := initialize_ELF(data)
 	
-	data = overwrite_got_entry(data, "system" , "0x00401176",curr_elf)
+	data = overwrite_got_entry(data, "system" , "custom_printf",curr_elf, false)
 	
 	data = overwrite_section_header_types(data, curr_elf)
 	
