@@ -13,7 +13,7 @@ func main() {
 	change_endian_ptr := flag.Bool("e",false,"change endianness of ELF")
 	change_bits_ptr := flag.Bool("b",false,"change number of bits (32 or 64) of ELF")
 	overwrite_sec_types := flag.Bool("t", false, "overwrite section types with null bytes")
-	//overwrite_sec_names := flag.Bool("n", false, "overwrite section names with null bytes")
+	overwrite_sec_names := flag.Bool("n", false, "overwrite section names with null bytes")
 	overwrite_got_function := flag.Bool("g", false, "overwrite library function with another function")
 	dest_func := flag.String("gd","","name of the library function that you want to replace")
 	new_func := flag.String("gf","","name of the function that you want to call instead of the library function")
@@ -55,10 +55,12 @@ func main() {
 		}
 		
 		if check_for_pie(data) {
-			fmt.Println("ELF file seems to be a PIE, replacing a GOT entry won't achieve the desired effect. Compile the ELF with the -no-pie flag on gcc to disable PIE")
+			fmt.Println("ELF file seems to be a PIE, replacing a GOT entry won't achieve the desired effect. Compile the script with the -no-pie flag on gcc to disable PIE")
+			return
 		} else {
 			if len(*new_func) != 0 && check_stripped(data, curr_elf) {
 				fmt.Println("ELF file seems to be stripped thus it is not possible to determine the address of the specified function.\nPlease enter the function address in hex instead")
+				return
 			} else if len(*new_func) != 0 {
 				data = overwrite_got_entry(data,*dest_func,*new_func,curr_elf, false)
 				
@@ -72,6 +74,10 @@ func main() {
 		data = overwrite_section_header_types(data, curr_elf)
 	}
 	
+	if(*overwrite_sec_names) {
+		data = overwrite_section_header_names(data, curr_elf)
+	}
+	
 	if(*change_endian_ptr) {
 		data = change_endianness(data)
 	}
@@ -79,6 +85,7 @@ func main() {
 	if(*change_bits_ptr) {
 		data = change_class(data)
 	}
+	
 	write_file(*output_filename,data)
 	
 	

@@ -268,13 +268,25 @@ func get_dyn_function_id_by_name(data []byte, curr_elf ELF, searched_string stri
 
 func get_dyn_addr_by_name(data []byte, curr_elf ELF, searched_function string) int{  //returns the virtual address for a dynamic function
 	id := get_dyn_function_id_by_name(data,curr_elf,searched_function)  //gets the ID for the specific function we're searching for
-	rela_plt := get_section_by_name(data,curr_elf,".rela.plt")  //The rela.plt section contains the relocation information that is used by the runtime linker to determine where he needs to put the addresses for the dynamic library functions. More specifically it contains addresses in the GOT, which we want to overwrite.
-	rela_plt_section := data[rela_plt[0]:rela_plt[0]+rela_plt[1]] //get entire section
-	for index:=0;index < rela_plt[1]/rela_plt[2];index++ {  //loop over this section 
-		plt_entry := rela_plt_section[index*rela_plt[2]:(index+1)*rela_plt[2]]  //get one entry
-		info := int(binary.LittleEndian.Uint64(plt_entry[8:16])) >> 32  //info is the second field in each rela.plt entry. It links each entry to its name and contains other information. To get the function ID, we need to shift the value to the left by 32
-		if info == id {
-			return int(binary.LittleEndian.Uint64(plt_entry[0:8]))  //This is the virtual address at which the linker will save the address for the searched function. This address is in the GOT, more specifically in the plt part of the GOT
+	if curr_elf.bit64 {  
+		rela_plt := get_section_by_name(data,curr_elf,".rela.plt")  //The rela.plt section contains the relocation information that is used by the runtime linker to determine where he needs to put the addresses for the dynamic library functions. More specifically it contains addresses in the GOT, which we want to overwrite.
+		rela_plt_section := data[rela_plt[0]:rela_plt[0]+rela_plt[1]] //get entire section
+		for index:=0;index < rela_plt[1]/rela_plt[2];index++ {  //loop over this section 
+			plt_entry := rela_plt_section[index*rela_plt[2]:(index+1)*rela_plt[2]]  //get one entry
+			info := int(binary.LittleEndian.Uint64(plt_entry[8:16])) >> 32  //info is the second field in each rela.plt entry. It links each entry to its name and contains other information. To get the function ID, we need to shift the value to the left by 32
+			if info == id {
+				return int(binary.LittleEndian.Uint64(plt_entry[0:8]))  //This is the virtual address at which the linker will save the address for the searched function. This address is in the GOT, more specifically in the plt part of the GOT
+			}
+		}
+	} else {
+		rel_plt := get_section_by_name(data, curr_elf, ".rel.plt")
+		rel_plt_section := data[rel_plt[0]:rel_plt[0]+rel_plt[1]]
+		for index:=0;index < rel_plt[1]/rel_plt[2];index++ {  
+			plt_entry := rel_plt_section[index*rel_plt[2]:(index+1)*rel_plt[2]]  
+			info := int(binary.LittleEndian.Uint32(plt_entry[4:8])) >> 8  
+			if info == id {
+				return int(binary.LittleEndian.Uint32(plt_entry[0:4]))
+			}
 		}
 	}
 
@@ -287,9 +299,16 @@ func get_fun_addr_by_name(data []byte, curr_elf ELF, searched_function string) i
 	symtab_section := data[symtab[0]:symtab[0]+symtab[1]]
 	for index:=0;index < symtab[1]/symtab[2];index++ {
 		symtab_entry := symtab_section[index*symtab[2]:(index+1)*symtab[2]]
-		name := int(binary.LittleEndian.Uint32(symtab_entry[0:4]))
-		if name == offset {
-			return int(binary.LittleEndian.Uint64(symtab_entry[8:16]))
+		if curr_elf.bit64 {
+			name := int(binary.LittleEndian.Uint32(symtab_entry[0:4]))
+			if name == offset {
+				return int(binary.LittleEndian.Uint64(symtab_entry[8:16]))
+			}
+		} else {
+			name := int(binary.LittleEndian.Uint32(symtab_entry[0:4]))
+			if name == offset {
+				return int(binary.LittleEndian.Uint32(symtab_entry[4:8]))
+			}
 		}
 	
 	}
@@ -320,7 +339,7 @@ func check_for_64bit(data []byte) bool{  //parses ELF header to determine wether
 	}
 }
 
-func overwrite_got_entry(data []byte, function_name string, new_function_address string, curr_elf ELF, is_hex bool) ([]byte) {
+func overwrite_got_entry(data []byte, function_name string, new_function_address string, curr_elf ELF, is_hex bool) ([]byte) {  //overwrites GOT entry of a library function with a user specified function
 	addr := get_dyn_addr_by_name(data, curr_elf, function_name)
 	addr = vir_addr_to_phys_addr(data, curr_elf, addr, ".got.plt")
 	if is_hex {
@@ -332,7 +351,7 @@ func overwrite_got_entry(data []byte, function_name string, new_function_address
 	return data
 }
 
-func overwrite_section_header_types(data []byte, curr_elf ELF) ([]byte) {
+func overwrite_section_header_types(data []byte, curr_elf ELF) ([]byte) {  //overwrites section types with null bytes
 	for index := 0; index < curr_elf.number_of_sections; index++ {
 		addr := curr_elf.section_table + index*curr_elf.size_of_section_headers + 4
 		data = write_data("",data,addr,4)
@@ -340,7 +359,15 @@ func overwrite_section_header_types(data []byte, curr_elf ELF) ([]byte) {
 	return data
 }
 
-func check_stripped(data []byte, curr_elf ELF) (bool) {
+func overwrite_section_header_names(data []byte, curr_elf ELF) ([]byte) {  //overwrites section names with null bytes
+	for index := 0; index < curr_elf.number_of_sections; index++ {
+		addr := curr_elf.section_table + index*curr_elf.size_of_section_headers
+		data = write_data("",data,addr,4)
+	}
+	return data
+}
+
+func check_stripped(data []byte, curr_elf ELF) (bool) {  //checks if file is stripped by searching for the .symtab section that isn't present in a stripped ELF file
 	if get_section_by_name(data,curr_elf,".symtab")[0] == 0 {
 		return true
 	} else {
@@ -348,7 +375,7 @@ func check_stripped(data []byte, curr_elf ELF) (bool) {
 	}
 }
 
-func check_ELF(data []byte) bool {
+func check_ELF(data []byte) bool {  //checks file header and compares it against and ELF header
 	if data[0] == 0x7f && data[1] == 0x45 && data[2] == 0x4c && data[3] == 0x46 {
 		return true
 	} else {
@@ -356,3 +383,13 @@ func check_ELF(data []byte) bool {
 	}
 	
 }
+
+
+//func main() {
+//	data := read_file("nopie32")
+//	curr_elf := initialize_ELF(data)
+//	fmt.Println(curr_elf)
+//	addr := get_dyn_addr_by_name(data,curr_elf,"system")
+//	fmt.Println(addr)
+//	fmt.Println(get_section_by_name(data,curr_elf,".symtab"))
+//}
