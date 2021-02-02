@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strings"
 )
 
 /// -e change class -b change bits -t overwrite section types -n overwrite section names -g overwrite got function -gd destination function -gf new function -gx new address -f filename -o output filename -i interactive
@@ -15,9 +16,9 @@ func main() {
 	overwrite_sec_types := flag.Bool("t", false, "overwrite section types with null bytes")
 	overwrite_sec_names := flag.Bool("n", false, "overwrite section names with null bytes")
 	overwrite_got_function := flag.Bool("g", false, "overwrite library function with another function")
-	dest_func := flag.String("gd","","name of the library function that you want to replace")
-	new_func := flag.String("gf","","name of the function that you want to call instead of the library function")
-	new_hex := flag.String("gx","","hexadecimal address that you want to call instead of the library function")
+	dest_func := flag.String("gd","","name of the library functions that you want to replace, separated by commas")
+	new_func := flag.String("gf","","name of the functions that you want to call instead of the library functions in the same order as the library functions, separated by commas")
+	new_hex := flag.String("gx","","hexadecimal addresses that you want to call instead of the library functions in the same order as the library functions, separated by commas")
 	filename := flag.String("f","","name of the ELF file you want to change")
 	output_filename := flag.String("o","","name of output ELF file")
 	
@@ -62,10 +63,18 @@ func main() {
 				fmt.Println("ELF file seems to be stripped thus it is not possible to determine the address of the specified function.\nPlease enter the function address in hex instead")
 				return
 			} else if len(*new_func) != 0 {
-				data = overwrite_got_entry(data,*dest_func,*new_func,curr_elf, false)
+				lib_funcs := strings.Split(*dest_func,",")
+				new_funcs := strings.Split(*new_func,",")
+				for index := 0;index < len(lib_funcs); index++ {
+					data = overwrite_got_entry(data,lib_funcs[index],new_funcs[index],curr_elf, false)
+				}
 				
 			} else {
-				data = overwrite_got_entry(data,*dest_func,*new_hex,curr_elf, true)
+				lib_funcs := strings.Split(*dest_func,",")
+				new_funcs := strings.Split(*new_hex,",")
+				for index := 0;index < len(lib_funcs); index++ {
+					data = overwrite_got_entry(data,lib_funcs[index],new_funcs[index],curr_elf, true)
+				}
 			}
 		}
 	}
