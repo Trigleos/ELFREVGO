@@ -210,7 +210,7 @@ Test
 ```
 This obfuscation greatly affects static analysis. Dissassembly shows that we are calling system but in reality we are calling custom_printf. An ELF would probably need to be run and then analyzed before any reverse engineer would see the change in the GOT.
 ### radare2
-![radare2_output](img/radar2.png)
+![radare2_output](img/radare2.png)
 We can see here that the call to system still looks like a normal library call. If we look into the PLT jmp gadget, we can actually see that we jump to custom_printf but often no one looks into this section and just assumes that system would be executed.
 ### objdump
 ```shell
