@@ -239,7 +239,7 @@ In order to reverse this obfuscation, you could probably patch the call to syste
 |--|--|--|
 | ★★★☆☆ | 20 minutes |★★★☆☆
 ## Modularity of ELFREVGO
-The great thing about ELFREVGO is its modularity. You can combine obfuscations to make reversing the binaries harder. You can even replace multiple library functions with different user-defined functions and to best of all is that nothing breaks the binary and it still runs normally. For a moderately hard CTF challenge, combine every single obfuscation technique together and make complex user-defined functions that closely mirror the library functions they replace.
+The great thing about ELFREVGO is its modularity. You can combine obfuscations to make reversing binaries harder. You can even replace multiple library functions with different user-defined functions and the best of all is that nothing breaks the binary and it still runs normally. For a moderately hard CTF challenge, combine every single obfuscation technique together and make complex user-defined functions that closely mirror the library functions they replace.
 ## Extension
 If you have any ideas on how to extend this project, feel free to open an issue or simply clone this repository and open a pull request.
 ## Sources
