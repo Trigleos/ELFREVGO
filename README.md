@@ -189,7 +189,9 @@ Reversing this change requires parsing the section header string table and getti
 | ★★★★☆ | 30 minutes |★☆☆☆☆
 ## GOT OBFUSCATION
 The last obfuscation technique is a bit special because it requires preparations in the source code. There needs to be a replacee and a replacement
+
 Replacee: A library function such as system that needs to be actually called in the compiled ELF (Attention: not every library function can be used. Due to optimisations by the compiler, some calls to library functions are replaced with simple assembly code. strlen is one such function that is prone to being replaced by an assembly routine). In our example script, we use system
+
 Replacement: A user-defined function that should be called intead of the library function. In our example script, we use custom_printf
 
 When we have those two prepared, we can use the -g flags to overwrite the GOT entries
